@@ -1,0 +1,41 @@
+{
+  "name": "@dunkyai/ai-validator",
+  "version": "1.0.0",
+  "description": "Open-source AI output validator — catch hallucinations, strip narration, verify tool calls. Battle-tested across 90+ production AI agent instances.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "test": "node --test dist/test.js"
+  },
+  "keywords": [
+    "ai",
+    "llm",
+    "hallucination",
+    "validation",
+    "tool-calling",
+    "guardrails",
+    "claude",
+    "openai",
+    "agent",
+    "narration",
+    "post-processing"
+  ],
+  "author": "Dunky AI <hello@dunky.ai>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dunkyai/ai-validator.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dunkyai/ai-validator/issues"
+  },
+  "homepage": "https://github.com/dunkyai/ai-validator#readme",
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}
