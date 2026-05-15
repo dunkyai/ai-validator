@@ -36,6 +36,7 @@
   },
   "homepage": "https://github.com/dunkyai/ai-validator#readme",
   "devDependencies": {
+    "@types/node": "^25.8.0",
     "typescript": "^6.0.3"
   }
 }
