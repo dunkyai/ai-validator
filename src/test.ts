@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
-import { validate } from "./index";
+import { validate, looksLikeError } from "./index";
 
 describe("Hallucination detection", () => {
   it("catches hallucinated email send", () => {
@@ -119,6 +119,61 @@ describe("Blocked phrases", () => {
       options: { blockedPhrases: ["hey there"] },
     });
     assert.strictEqual(r.cleaned.includes("HEY THERE"), false);
+  });
+});
+
+describe("Tool failure detection", () => {
+  it("catches success claim when tool returned JSON error", () => {
+    const r = validate({
+      response: "I've sent the email to john@example.com",
+      toolCalls: [{ name: "gmail_send", input: { to: "john@example.com" }, output: '{"error":"Request failed with status 500"}' }],
+    });
+    assert.strictEqual(r.pass, false);
+    assert.strictEqual(r.issues[0].message.includes("returned an error"), true);
+  });
+
+  it("catches success claim when tool returned success: false", () => {
+    const r = validate({
+      response: "I've drafted the email",
+      toolCalls: [{ name: "gmail_create_draft", input: {}, output: '{"success":false,"message":"Auth expired"}' }],
+    });
+    assert.strictEqual(r.pass, false);
+  });
+
+  it("catches success claim when tool returned error status code", () => {
+    const r = validate({
+      response: "I've posted the tweet thread",
+      toolCalls: [{ name: "twitter_post_thread", input: {}, output: '{"status":403,"message":"Forbidden"}' }],
+    });
+    assert.strictEqual(r.pass, false);
+  });
+
+  it("catches success claim when tool returned plain-text error", () => {
+    const r = validate({
+      response: "I've created the Google Doc",
+      toolCalls: [{ name: "docs_create", input: {}, output: "Error: Permission denied" }],
+    });
+    assert.strictEqual(r.pass, false);
+  });
+
+  it("passes when tool returned actual success", () => {
+    const r = validate({
+      response: "I've sent the email",
+      toolCalls: [{ name: "gmail_send", input: {}, output: '{"success":true,"id":"msg_123"}' }],
+    });
+    assert.strictEqual(r.pass, true);
+  });
+
+  it("does not false-positive on 'no errors' in output", () => {
+    assert.strictEqual(looksLikeError("Completed with no errors"), false);
+  });
+
+  it("does not false-positive on 'successfully' in output", () => {
+    assert.strictEqual(looksLikeError("Email sent successfully"), false);
+  });
+
+  it("detects timeout in plain text", () => {
+    assert.strictEqual(looksLikeError("Connection timed out after 30s"), true);
   });
 });
 

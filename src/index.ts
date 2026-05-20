@@ -111,7 +111,7 @@ export function validate(params: {
   // 1. Check for hallucinated action claims
   if (checkHallucinations && toolCalls.length >= 0) {
     const toolNames = toolCalls.map(t => t.name);
-    const hallucinationIssues = checkActionClaims(response, toolNames, actionPatterns);
+    const hallucinationIssues = checkActionClaims(response, toolNames, actionPatterns, toolCalls);
     issues.push(...hallucinationIssues);
   }
 
@@ -141,12 +141,14 @@ export function validate(params: {
 }
 
 /**
- * Check if the AI's response claims actions that weren't actually performed.
+ * Check if the AI's response claims actions that weren't actually performed,
+ * or claims success when the tool actually returned an error.
  */
 export function checkActionClaims(
   response: string,
   toolNamesCalled: string[],
-  patterns?: { pattern: RegExp; tools: string[] }[]
+  patterns?: { pattern: RegExp; tools: string[] }[],
+  toolCalls?: ToolCall[]
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const actionPatterns = patterns || DEFAULT_ACTION_PATTERNS;
@@ -163,11 +165,56 @@ export function checkActionClaims(
           message: `AI claims to have performed an action, but none of these tools were called: ${tools.join(", ")}`,
           match: match?.[0],
         });
+      } else if (toolCalls) {
+        // Tool was called — but did it actually succeed?
+        const matchingCall = toolCalls.find(t =>
+          tools.some(tool => t.name === tool || t.name.includes(tool) || tool.includes(t.name))
+        );
+        if (matchingCall && looksLikeError(matchingCall.output)) {
+          const match = response.match(pattern);
+          issues.push({
+            type: "hallucination",
+            message: `AI claims success but the tool "${matchingCall.name}" returned an error: ${extractErrorMessage(matchingCall.output)}`,
+            match: match?.[0],
+          });
+        }
       }
     }
   }
 
   return issues;
+}
+
+/**
+ * Check if a tool output looks like an error response.
+ */
+export function looksLikeError(output: string): boolean {
+  try {
+    const parsed = JSON.parse(output);
+    if (parsed.error) return true;
+    if (parsed.success === false) return true;
+    if (parsed.status && parsed.status >= 400) return true;
+  } catch {
+    // Not JSON — check for common error patterns in plain text
+    if (/\b(error|failed|failure|exception|timed? ?out|unauthorized|forbidden|not found)\b/i.test(output) &&
+        !/\b(no errors?|without error|error.free|successfully)\b/i.test(output)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Extract a short error message from tool output for reporting.
+ */
+function extractErrorMessage(output: string): string {
+  try {
+    const parsed = JSON.parse(output);
+    if (typeof parsed.error === "string") return parsed.error;
+    if (typeof parsed.error === "object" && parsed.error?.message) return parsed.error.message;
+    if (parsed.message) return parsed.message;
+  } catch {}
+  return output.slice(0, 100);
 }
 
 /**

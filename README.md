@@ -44,7 +44,26 @@ console.log(result.issues)
 // [{ type: "hallucination", message: "AI claims to have performed an action, but none of these tools were called: gmail_send, send_email, sendEmail" }]
 ```
 
-### 2. Narration / Thought Process
+### 2. Tool Failed But AI Claims Success
+
+The AI called the tool, but it returned an error — and the AI claims it succeeded anyway:
+
+```typescript
+const result = validate({
+  response: "I've sent the email to john@example.com",
+  toolCalls: [
+    { name: "gmail_send", input: { to: "john@example.com" }, output: '{"error":"Request failed with status 500"}' }
+  ]
+})
+
+console.log(result.pass) // false
+console.log(result.issues)
+// [{ type: "hallucination", message: 'AI claims success but the tool "gmail_send" returned an error: Request failed with status 500' }]
+```
+
+Error detection handles JSON errors (`{ "error": "..." }`, `{ "success": false }`, status codes >= 400) and plain-text error patterns.
+
+### 3. Narration / Thought Process
 
 The AI leaks its internal monologue into user-facing responses:
 
@@ -109,9 +128,31 @@ Check if the AI claims actions not backed by tool calls.
 
 Strip narration lines from text.
 
+### `looksLikeError(output)`
+
+Check if a tool output looks like an error. Handles JSON (`{ "error": "..." }`, `{ "success": false }`, status >= 400) and plain-text error patterns.
+
 ### `removeBlockedPhrases(text, phrases)`
 
 Remove specific phrases from text.
+
+## What It Doesn't Catch
+
+This validator detects one specific failure mode: **the model skips tool calls entirely and fabricates a success response.** The signal is binary — zero matching tool calls + a success claim in the output.
+
+It covers two hallucination scenarios:
+1. **No tool called** — the model skips tool calls entirely and fabricates a success response.
+2. **Tool called but failed** — the model calls the tool, gets an error back, but claims success anyway.
+
+It does **not** cover:
+
+- **The model calls the wrong tool.** If the user says "send an email" and the model calls `slack_send` instead, that's a routing/prompt issue, not a hallucination.
+
+- **Subtle factual inaccuracies.** If the model summarizes a document and gets a detail wrong, that's a different class of problem requiring retrieval verification.
+
+### Why this approach?
+
+We tried matching the user's *input* for action keywords ("send", "create", "search") and flagging when no tool call followed. This was whack-a-mole — users phrase requests in endless ways ("check on", "look into", "gather"). Matching success claims in the *output* is more robust because hallucinated responses are remarkably formulaic: "I've sent...", "Successfully created...", "Email Sent", etc.
 
 ## Works With Any Model
 
